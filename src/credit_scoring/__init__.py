@@ -1,0 +1,4 @@
+"""credit-scoring
+"""
+
+__version__ = "0.1"
