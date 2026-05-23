@@ -1,10 +1,16 @@
-"""
-This is a boilerplate pipeline 'modeling'
-generated using Kedro 1.4.0
-"""
+from kedro.pipeline import Pipeline, node, pipeline
 
-from kedro.pipeline import Node, Pipeline  # noqa
+from .nodes import train_baseline_model
 
 
 def create_pipeline(**kwargs) -> Pipeline:
-    return Pipeline([])
+    return pipeline(
+        [
+            node(
+                func=train_baseline_model,
+                inputs="model_input",
+                outputs=["baseline_model", "metrics"],
+                name="train_baseline_model_node",
+            ),
+        ]
+    )
