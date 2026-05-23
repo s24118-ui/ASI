@@ -3,7 +3,7 @@ jupyterlab>=3.0
 notebook
 kedro~=1.4.0
 
-kedro-datasets[pandas-csvdataset]>=9.0
+kedro-datasets[pandas-csvdataset,pickle-pickledataset,json-jsondataset]>=9.0
 pandas>=2.2
 numpy>=1.26
 scikit-learn>=1.4
