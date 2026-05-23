@@ -21,3 +21,7 @@ metrics:
 automl_metrics:
   type: json.JSONDataset
   filepath: data/08_reporting/automl_metrics.json
+
+automl_leaderboard:
+  type: pandas.CSVDataset
+  filepath: data/08_reporting/automl_leaderboard.csv

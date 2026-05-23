@@ -21,9 +21,12 @@ def train_autogluon_model(model_input: pd.DataFrame) -> dict:
     leaderboard = predictor.leaderboard(silent=True)
     best_model = leaderboard.iloc[0]
 
-    return {
+    metrics = {
         "best_model": str(best_model["model"]),
         "score_val": float(best_model["score_val"]),
         "eval_metric": str(best_model["eval_metric"]),
         "model_path": str(model_path),
+        "trained_models_count": int(len(leaderboard)),
     }
+
+    return metrics, leaderboard
