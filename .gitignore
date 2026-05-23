@@ -18,6 +18,11 @@ data/**
 # also keep all .gitkeep files
 !.gitkeep
 
+# Project files tracked intentionally, usually through Git LFS.
+!data/01_raw/credit_score.csv
+!data/06_models/**
+!data/08_reporting/*.json
+
 # ignore kedro-viz metadata
 .viz
 
