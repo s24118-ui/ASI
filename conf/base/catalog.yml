@@ -2,3 +2,14 @@
 #
 # Documentation for this file format can be found in "The Data Catalog"
 # Link: https://docs.kedro.org/en/stable/catalog-data/introduction/#data-catalog
+credit_score_raw:
+  type: pandas.CSVDataset
+  filepath: data/01_raw/credit_score.csv
+
+credit_score_clean:
+  type: pandas.CSVDataset
+  filepath: data/02_intermediate/credit_score_clean.csv
+
+model_input:
+  type: pandas.CSVDataset
+  filepath: data/05_model_input/model_input.csv
