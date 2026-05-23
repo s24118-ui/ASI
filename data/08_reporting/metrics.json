@@ -1,0 +1,7 @@
+{
+  "model": "RandomForestClassifier",
+  "accuracy": 0.8204,
+  "f1_macro": 0.8154998728197024,
+  "train_rows": 80000,
+  "test_rows": 20000
+}
