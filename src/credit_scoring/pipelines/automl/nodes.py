@@ -9,14 +9,17 @@ def train_autogluon_model(model_input: pd.DataFrame) -> dict:
     model_path = Path("data/06_models/autogluon")
 
     predictor = TabularPredictor(
-        label="Credit_Score",
-        path=str(model_path),
-        eval_metric="f1_macro",
+    label="Credit_Score",
+    path=str(model_path),
+    eval_metric="f1_macro",
     ).fit(
-        model_input,
-        presets="medium",
-        time_limit=1800,
+    model_input,
+    presets="medium",
+    dynamic_stacking=False,
+    num_bag_folds=0,
+    num_stack_levels=0,
     )
+
 
     leaderboard = predictor.leaderboard(silent=True)
     best_model = leaderboard.iloc[0]
