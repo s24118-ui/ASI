@@ -1,27 +1,31 @@
 import pandas as pd
+import mlflow
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.model_selection import train_test_split
 
 
-def train_baseline_model(model_input: pd.DataFrame) -> tuple[RandomForestClassifier, dict]:
+def train_baseline_model(
+    model_input: pd.DataFrame,
+    parameters: dict,
+) -> tuple[RandomForestClassifier, dict]:
     y = model_input["Credit_Score"]
     x = model_input.drop(columns=["Credit_Score"])
 
     x_train, x_test, y_train, y_test = train_test_split(
         x,
         y,
-        test_size=0.2,
-        random_state=42,
+        test_size=parameters["test_size"],
+        random_state=parameters["random_state"],
         stratify=y,
     )
 
     model = RandomForestClassifier(
-        n_estimators=300,
-        min_samples_split=5,
-        min_samples_leaf=2,
-        class_weight="balanced",
-        random_state=42,
+        n_estimators=parameters["n_estimators"],
+        min_samples_split=parameters["min_samples_split"],
+        min_samples_leaf=parameters["min_samples_leaf"],
+        class_weight=parameters["class_weight"],
+        random_state=parameters["random_state"],
         n_jobs=-1,
     )
 
@@ -36,5 +40,15 @@ def train_baseline_model(model_input: pd.DataFrame) -> tuple[RandomForestClassif
         "train_rows": int(len(x_train)),
         "test_rows": int(len(x_test)),
     }
+
+    mlflow.log_params({
+        "model": "RandomForestClassifier",
+        **parameters,
+    })
+
+    mlflow.log_metrics({
+        "accuracy": metrics["accuracy"],
+        "f1_macro": metrics["f1_macro"],
+    })
 
     return model, metrics

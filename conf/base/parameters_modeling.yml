@@ -1,5 +1,7 @@
-# This is a boilerplate parameters config generated for pipeline 'modeling'
-# using Kedro 1.4.0.
-#
-# Documentation for this file format can be found in "Parameters"
-# Link: https://docs.kedro.org/en/1.4.0/configuration/parameters.html
+modeling:
+  test_size: 0.2
+  random_state: 42
+  n_estimators: 300
+  min_samples_split: 5
+  min_samples_leaf: 2
+  class_weight: balanced
