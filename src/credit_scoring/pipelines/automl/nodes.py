@@ -1,25 +1,24 @@
 from pathlib import Path
 
 import pandas as pd
+import mlflow
 
-
-def train_autogluon_model(model_input: pd.DataFrame) -> dict:
+def train_autogluon_model(model_input: pd.DataFrame, parameters: dict) -> dict:
     from autogluon.tabular import TabularPredictor
 
-    model_path = Path("data/06_models/autogluon")
+    model_path = Path(parameters["model_path"])
 
     predictor = TabularPredictor(
-    label="Credit_Score",
-    path=str(model_path),
-    eval_metric="f1_macro",
+        label=parameters["label"],
+        path=str(model_path),
+        eval_metric=parameters["eval_metric"],
     ).fit(
-    model_input,
-    presets="medium",
-    dynamic_stacking=False,
-    num_bag_folds=0,
-    num_stack_levels=0,
+        model_input,
+        presets=parameters["presets"],
+        dynamic_stacking=parameters["dynamic_stacking"],
+        num_bag_folds=parameters["num_bag_folds"],
+        num_stack_levels=parameters["num_stack_levels"],
     )
-
 
     leaderboard = predictor.leaderboard(silent=True)
     best_model = leaderboard.iloc[0]
@@ -31,5 +30,21 @@ def train_autogluon_model(model_input: pd.DataFrame) -> dict:
         "model_path": str(model_path),
         "trained_models_count": int(len(leaderboard)),
     }
+
+    mlflow.log_params({
+        "model": "AutoGluon TabularPredictor",
+        "best_model": metrics["best_model"],
+        **parameters,
+    })
+
+    mlflow.log_metrics({
+        "score_val": metrics["score_val"],
+        "trained_models_count": metrics["trained_models_count"],
+    })
+
+    mlflow.log_text(
+        leaderboard.to_csv(index=False),
+        "automl_leaderboard.csv",
+    )
 
     return metrics, leaderboard

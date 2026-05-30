@@ -1,5 +1,8 @@
-# This is a boilerplate parameters config generated for pipeline 'automl'
-# using Kedro 1.4.0.
-#
-# Documentation for this file format can be found in "Parameters"
-# Link: https://docs.kedro.org/en/1.4.0/configuration/parameters.html
+automl:
+  label: Credit_Score
+  model_path: data/06_models/autogluon
+  eval_metric: f1_macro
+  presets: medium
+  dynamic_stacking: false
+  num_bag_folds: 0
+  num_stack_levels: 0

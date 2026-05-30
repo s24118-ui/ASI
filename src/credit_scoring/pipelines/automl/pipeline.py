@@ -8,7 +8,7 @@ def create_pipeline(**kwargs) -> Pipeline:
         [
             node(
                 func=train_autogluon_model,
-                inputs="model_input",
+                inputs=["model_input", "params:automl"],
                 outputs=["automl_metrics", "automl_leaderboard"],
                 name="train_autogluon_model_node",
             ),
