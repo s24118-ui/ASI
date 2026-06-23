@@ -1,0 +1,40 @@
+name: Promote model placeholder
+
+on:
+  workflow_dispatch:
+    inputs:
+      model_run_id:
+        description: Candidate MLflow run ID or model version to review
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  promotion-review:
+    name: Review candidate for production
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+
+    steps:
+      - name: Record promotion requirements
+        shell: bash
+        env:
+          MODEL_REFERENCE: ${{ inputs.model_run_id }}
+        run: |
+          {
+            echo "## Manual model promotion placeholder"
+            echo
+            echo "Candidate reference: \`$MODEL_REFERENCE\`"
+            echo
+            echo "No model was promoted. A real candidate → production transition requires:"
+            echo
+            echo "1. A durable MLflow Tracking Server and Model Registry."
+            echo "2. An immutable model artifact with checksum and code/data lineage."
+            echo "3. Evaluation on an independent holdout with approved quality thresholds."
+            echo "4. Security, compatibility and inference smoke checks."
+            echo "5. Required reviewers configured on the GitHub \`production\` environment."
+          } >> "$GITHUB_STEP_SUMMARY"
+
