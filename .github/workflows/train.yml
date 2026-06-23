@@ -1,0 +1,131 @@
+name: Continuous training
+
+on:
+  workflow_dispatch:
+    inputs:
+      training_mode:
+        description: Pipeline to train; AutoML is opt-in and may be resource-intensive
+        required: true
+        default: baseline
+        type: choice
+        options:
+          - baseline
+          - automl
+  schedule:
+    - cron: "37 2 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: continuous-training
+  cancel-in-progress: false
+
+jobs:
+  train-candidate:
+    name: Train candidate (${{ github.event.inputs.training_mode || 'baseline' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    env:
+      TRAINING_MODE: ${{ github.event.inputs.training_mode || 'baseline' }}
+
+    steps:
+      - name: Check out source without automatic Git LFS download
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
+
+      - name: Install baseline training dependencies
+        shell: bash
+        run: |
+          grep -v -E '^autogluon' requirements.txt > /tmp/requirements-training.txt
+          python -m pip install --upgrade pip
+          python -m pip install -r /tmp/requirements-training.txt
+          python -m pip install -e .
+
+      - name: Install AutoML dependency only when explicitly selected
+        if: env.TRAINING_MODE == 'automl'
+        shell: bash
+        run: |
+          grep -E '^autogluon' requirements.txt > /tmp/requirements-automl.txt
+          python -m pip install -r /tmp/requirements-automl.txt
+
+      - name: Fetch only the raw training dataset from Git LFS
+        id: data
+        shell: bash
+        run: |
+          git lfs pull --include="data/01_raw/credit_score.csv" || true
+          if head -n 1 data/01_raw/credit_score.csv | grep -q 'git-lfs'; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Training data is still a Git LFS pointer; training is skipped."
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare model input with Kedro
+        if: steps.data.outputs.ready == 'true'
+        run: kedro run --pipeline=data_processing
+
+      - name: Train baseline candidate
+        if: steps.data.outputs.ready == 'true' && env.TRAINING_MODE == 'baseline'
+        run: kedro run --pipeline=modeling
+
+      - name: Train AutoML candidate (explicit opt-in only)
+        if: steps.data.outputs.ready == 'true' && env.TRAINING_MODE == 'automl'
+        run: kedro run --pipeline=automl
+
+      - name: Upload generated baseline metrics
+        if: steps.data.outputs.ready == 'true' && env.TRAINING_MODE == 'baseline'
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-metrics-baseline-${{ github.run_id }}
+          path: data/08_reporting/metrics.json
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload generated AutoML metrics
+        if: steps.data.outputs.ready == 'true' && env.TRAINING_MODE == 'automl'
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-metrics-automl-${{ github.run_id }}
+          path: |
+            data/08_reporting/automl_metrics.json
+            data/08_reporting/automl_leaderboard.csv
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload generated baseline model
+        if: steps.data.outputs.ready == 'true' && env.TRAINING_MODE == 'baseline'
+        uses: actions/upload-artifact@v4
+        with:
+          name: baseline-candidate-${{ github.run_id }}
+          path: data/06_models/baseline_random_forest.pkl
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Write training summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Continuous training"
+            echo
+            echo "- Requested mode: \`$TRAINING_MODE\`. Scheduled runs default to \`baseline\`; AutoML requires explicit manual selection."
+            echo "- This workflow creates a candidate only and never promotes it to production."
+            if [[ "${{ steps.data.outputs.ready }}" != "true" ]]; then
+              echo "- Training was skipped because the raw Git LFS dataset was unavailable."
+            fi
+            echo "- MLflow currently uses local file tracking; durable experiment tracking and a real Model Registry still need to be configured."
+            echo "- AutoML model directories are not uploaded because they can exceed several gigabytes; use a dedicated model registry/object store."
+            echo "- Before production use, add versioned data, an independent holdout and explicit promotion thresholds."
+          } >> "$GITHUB_STEP_SUMMARY"

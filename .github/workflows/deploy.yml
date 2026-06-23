@@ -1,0 +1,75 @@
+name: Deployment placeholder
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deployment-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deployment-readiness:
+    name: Validate deployment readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source without Git LFS
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
+
+      - name: Install application dependencies without AutoML
+        shell: bash
+        run: |
+          grep -v -E '^autogluon' requirements.txt > /tmp/requirements-deploy.txt
+          python -m pip install --upgrade pip
+          python -m pip install -r /tmp/requirements-deploy.txt
+          python -m pip install -e .
+
+      - name: Check application entry point
+        shell: bash
+        run: |
+          test -f app.py
+          python -m streamlit version
+
+      - name: Detect deployable assets
+        id: assets
+        shell: bash
+        run: |
+          [[ -f Dockerfile ]] && echo "dockerfile=true" >> "$GITHUB_OUTPUT" || echo "dockerfile=false" >> "$GITHUB_OUTPUT"
+          if [[ -f data/06_models/baseline_random_forest.pkl ]] && ! head -n 1 data/06_models/baseline_random_forest.pkl | grep -q 'git-lfs'; then
+            echo "model=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "model=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # A Streamlit runtime smoke test is intentionally omitted: the application
+      # requires the large model artifact, which is not downloaded in this workflow.
+      - name: Write deployment summary
+        shell: bash
+        run: |
+          {
+            echo "## Deployment readiness"
+            echo
+            echo "- Dockerfile present: \`${{ steps.assets.outputs.dockerfile }}\`."
+            echo "- Local deployable model present: \`${{ steps.assets.outputs.model }}\`."
+            echo "- No deployment was performed and no cloud credentials or external service names are configured."
+            echo "- The runtime smoke test was skipped because the Streamlit application requires the large model artifact."
+            echo "- A real CD workflow needs a deployment target, an immutable model reference, a packaging strategy, health checks and rollback instructions."
+          } >> "$GITHUB_STEP_SUMMARY"
