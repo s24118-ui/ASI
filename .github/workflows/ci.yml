@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Fast checks (Python 3.11)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out source without Git LFS
+        uses: actions/checkout@v4
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            pyproject.toml
+
+      - name: Install lightweight CI dependencies
+        shell: bash
+        run: |
+          # AutoGluon belongs to the dedicated training workflow, not fast CI.
+          grep -v -E '^autogluon' requirements.txt > /tmp/requirements-ci.txt
+          python -m pip install --upgrade pip
+          python -m pip install -r /tmp/requirements-ci.txt
+          python -m pip install -e ".[dev]" build
+
+      # Advisory until the existing lint findings are addressed in project code.
+      # Remove continue-on-error after linting is ready to become a required gate.
+      - name: Ruff lint (advisory)
+        continue-on-error: true
+        shell: bash
+        run: |
+          if python -m ruff --version >/dev/null 2>&1; then
+            python -m ruff check app.py src tests
+          else
+            echo "::notice::Ruff is not available; skipping lint diagnostics."
+          fi
+
+      # Advisory until the existing formatting findings are addressed.
+      # Remove continue-on-error after formatting is ready to become a required gate.
+      - name: Ruff format check (advisory)
+        continue-on-error: true
+        shell: bash
+        run: |
+          if python -m ruff --version >/dev/null 2>&1; then
+            python -m ruff format --check app.py src tests
+          else
+            echo "::notice::Ruff is not available; skipping format diagnostics."
+          fi
+
+      # tests/test_run.py is a Kedro template test which starts the default (training)
+      # pipeline. It is deliberately excluded from fast CI. Remove continue-on-error
+      # after real unit tests exist and are ready to become a required gate.
+      - name: Unit tests only (advisory)
+        continue-on-error: true
+        run: >-
+          python -m pytest tests
+          --ignore=tests/test_run.py
+          -p no:cacheprovider
+          -o addopts=""
+          -ra
+
+      - name: Build Python package
+        run: python -m build
+
