@@ -166,6 +166,41 @@ data/08_reporting/automl_metrics.json
 data/08_reporting/automl_leaderboard.csv
 ```
 
+## GitHub Actions / automatyzacja MLOps
+
+Projekt rozdziela szybkie sprawdzanie kodu, cięższe zadania ML oraz przyszłe
+wdrożenie na osobne workflowy w `.github/workflows/`:
+
+- `ci.yml` — szybkie CI dla Pull Requestów oraz pushy do `main`/`master`:
+  linting, kontrola formatowania, testy i budowanie pakietu. Nie uruchamia
+  treningu ani AutoML.
+- `integration.yml` — diagnostyczna walidacja środowiska i pipeline'ów Kedro
+  bez pobierania dużych danych. Pełny test integracyjny będzie wymagał małego
+  pliku fixture CSV.
+- `security.yml` — analiza bezpieczeństwa kodu przez CodeQL oraz kontrola zmian
+  zależności w Pull Requestach.
+- `train.yml` — Continuous Training uruchamiany ręcznie lub raz w tygodniu.
+  Domyślnie trenuje model bazowy, natomiast AutoML wymaga ręcznego wyboru.
+  Wygenerowane metryki i model bazowy są publikowane jako tymczasowe artifacts;
+  workflow nie promuje modelu automatycznie.
+- `promote-model.yml` — ręczna bramka promocji `candidate` → `production`.
+  Obecnie jest to placeholder i checklista wymagań, ponieważ MLflow Model
+  Registry nie jest jeszcze skonfigurowany.
+- `deploy.yml` — kontrola gotowości do CD/deploymentu. Obecnie jest to
+  placeholder, ponieważ projekt nie ma jeszcze Dockerfile, hostingu ani
+  skonfigurowanej infrastruktury wdrożeniowej.
+
+Workflow z obsługą `workflow_dispatch` można uruchomić w GitHubie przez:
+
+```text
+Actions → wybierz workflow → Run workflow
+```
+
+Workflowy nie wykonują commitów ani pushy i nie modyfikują gałęzi repozytorium.
+Ciężki trening jest odseparowany od CI, ponieważ wymaga danych z Git LFS,
+więcej czasu i pamięci oraz tworzy duże modele. Z tego samego powodu AutoML nie
+jest uruchamiany przy każdym Pull Requeście i pozostaje ręczną opcją treningu.
+
 ## Do zrobienia
 
 Kolejne etapy projektu:
@@ -174,4 +209,4 @@ Kolejne etapy projektu:
 - przygotować aplikację Streamlit do predykcji,
 - dodać logowanie predykcji jako prosty monitoring,
 - uzupełnić dokumentację architektury,
-- dodać GitHub Actions jako element automatyzacji MLOps.
+
