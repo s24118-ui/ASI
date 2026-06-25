@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import json
-import pickle
 import sys
+import uuid
 from pathlib import Path
 
 import numpy as np
@@ -11,105 +11,40 @@ import streamlit as st
 
 # Ścieżki projektu
 PROJECT_ROOT = Path(__file__).resolve().parent
-MODEL_PATH = PROJECT_ROOT / "data" / "06_models" / "baseline_random_forest.pkl"
 METRICS_PATH = PROJECT_ROOT / "data" / "08_reporting" / "metrics.json"
-
 
 sys.path.insert(0, str(PROJECT_ROOT / "src"))
 
+# Cechy modelu, wczytywanie modelu i logowanie predykcji
+# wspólne dla Streamlit i API FastAPI
+from credit_scoring.serving import inference  # noqa: E402
+from credit_scoring.serving.prediction_logger import prediction_logger  # noqa: E402
+from credit_scoring.serving.schema import (  # noqa: E402
+    CREDIT_MIX_MAP,
+    LOAN_TYPES,
+    MODEL_FEATURES,
+    OCCUPATIONS,
+    PAYMENT_BEHAVIOURS,
+    PAYMENT_MIN_MAP,
+    TARGET_LABELS,
+    TARGET_PL,
+)
 
-# Definicje cech
-TARGET_LABELS = {0: "Poor", 1: "Standard", 2: "Good"}
-TARGET_PL = {0: "Niska (Poor)", 1: "Średnia (Standard)", 2: "Dobra (Good)"}
+MODEL_PATH = inference.MODEL_PATH
 DEFAULT_COLOR = {0: "#35A4E5", 1: "#8378FF"}
 TARGET_COLOR = {0: "#e53935", 1: "#fb8c00", 2: "#43a047"}
-
-LOAN_TYPES = [
-    "Auto Loan",
-    "Credit-Builder Loan",
-    "Debt Consolidation Loan",
-    "Home Equity Loan",
-    "Mortgage Loan",
-    "Not Specified",
-    "Payday Loan",
-    "Personal Loan",
-    "Student Loan",
-]
-
-PAYMENT_BEHAVIOURS = [
-    "High_spent_Large_value_payments",
-    "High_spent_Medium_value_payments",
-    "High_spent_Small_value_payments",
-    "Low_spent_Large_value_payments",
-    "Low_spent_Medium_value_payments",
-    "Low_spent_Small_value_payments",
-]
-
-OCCUPATIONS = [
-    "Architect",
-    "Developer",
-    "Doctor",
-    "Engineer",
-    "Entrepreneur",
-    "Journalist",
-    "Lawyer",
-    "Manager",
-    "Mechanic",
-    "Media_Manager",
-    "Musician",
-    "Scientist",
-    "Teacher",
-    "Writer",
-]
-
-CREDIT_MIX_MAP = {"Bad": 0, "Standard": 1, "Good": 2}
-PAYMENT_MIN_MAP = {"No": 0, "Yes": 1}
-
-# Kolejność cech wymagana przez model — identyczna jak przy treningu.
-MODEL_FEATURES = [
-    "Age",
-    "Annual_Income",
-    "Monthly_Inhand_Salary",
-    "Num_Bank_Accounts",
-    "Num_Credit_Card",
-    "Interest_Rate",
-    "Num_of_Loan",
-    "Delay_from_due_date",
-    "Num_of_Delayed_Payment",
-    "Changed_Credit_Limit",
-    "Num_Credit_Inquiries",
-    "Credit_Mix",
-    "Outstanding_Debt",
-    "Credit_Utilization_Ratio",
-    "Credit_History_Age",
-    "Payment_of_Min_Amount",
-    "Total_EMI_per_month",
-    "Amount_invested_monthly",
-    "Monthly_Balance",
-    *[f"LoanType_{lt}" for lt in LOAN_TYPES],
-    *[f"PayBeh_{pb}" for pb in PAYMENT_BEHAVIOURS],
-    *[f"Occupation_{oc}" for oc in OCCUPATIONS],
-]
 
 
 # Ładowanie modelu i metryk
 def _is_lfs_pointer(path: Path) -> bool:
     """Wykrywa, czy plik to wskaźnik Git LFS, a nie faktyczny model."""
-    try:
-        if path.stat().st_size > 5000:  # ograniczenie pkl (setki MB)
-            return False
-        with open(path, "rb") as handle:
-            head = handle.read(200)
-        return b"git-lfs" in head
-    except OSError:
-        return False
+    return inference.is_lfs_pointer(path)
 
 
 @st.cache_resource(show_spinner="Wczytywanie modelu...")
 def load_model(path_str: str):
     """Wczytuje wytrenowany model z pliku pickle (cache na czas sesji)."""
-    with open(path_str, "rb") as handle:
-        return pickle.load(handle)
+    return inference.load_model(path_str)
 
 
 @st.cache_data(show_spinner=False)
@@ -121,51 +56,56 @@ def load_metrics(path_str: str) -> dict:
         return {}
 
 
-# Budowa wektora cech z formularza
 def build_feature_row(inputs: dict) -> pd.DataFrame:
-    """Tworzy pojedynczy wiersz cech w kolejności wymaganej przez model."""
-    row = {feature: 0 for feature in MODEL_FEATURES}
-
-    # Cechy numeryczne i porządkowe
-    row["Age"] = inputs["age"]
-    row["Annual_Income"] = inputs["annual_income"]
-    row["Monthly_Inhand_Salary"] = inputs["monthly_salary"]
-    row["Num_Bank_Accounts"] = inputs["num_bank_accounts"]
-    row["Num_Credit_Card"] = inputs["num_credit_card"]
-    row["Interest_Rate"] = inputs["interest_rate"]
-    row["Num_of_Loan"] = inputs["num_of_loan"]
-    row["Delay_from_due_date"] = inputs["delay_from_due_date"]
-    row["Num_of_Delayed_Payment"] = inputs["num_delayed_payment"]
-    row["Changed_Credit_Limit"] = inputs["changed_credit_limit"]
-    row["Num_Credit_Inquiries"] = inputs["num_credit_inquiries"]
-    row["Credit_Mix"] = CREDIT_MIX_MAP[inputs["credit_mix"]]
-    row["Outstanding_Debt"] = inputs["outstanding_debt"]
-    row["Credit_Utilization_Ratio"] = inputs["credit_utilization"]
-    row["Credit_History_Age"] = inputs["credit_history_age_months"]
-    row["Payment_of_Min_Amount"] = PAYMENT_MIN_MAP[inputs["payment_min"]]
-    row["Total_EMI_per_month"] = inputs["total_emi"]
-    row["Amount_invested_monthly"] = inputs["amount_invested"]
-    row["Monthly_Balance"] = inputs["monthly_balance"]
-
-    # Typy kredytów (multiselect -> one-hot)
-    for loan_type in inputs["loan_types"]:
-        row[f"LoanType_{loan_type}"] = 1
-
-    # Zachowanie płatnicze (one-hot)
-    row[f"PayBeh_{inputs['payment_behaviour']}"] = 1
-
-    # Zawód (one-hot)
-    if inputs["occupation"] in OCCUPATIONS:
-        row[f"Occupation_{inputs['occupation']}"] = 1
-
-    return pd.DataFrame([row])[MODEL_FEATURES]
+    """Tworzy pojedynczy wiersz cech w kolejności wymaganej przez model.
+    Nakładka na `credit_scoring.serving.inference.build_feature_row`
+    """
+    return inference.build_feature_row(inputs)
 
 
 # Predykcja
 def predict(model, features: pd.DataFrame) -> tuple[np.ndarray, np.ndarray | None]:
-    preds = model.predict(features)
-    proba = model.predict_proba(features) if hasattr(model, "predict_proba") else None
-    return preds, proba
+    return inference.predict(model, features)
+
+
+def log_predictions_and_show_verification(
+    model,
+    features_df: pd.DataFrame,
+    preds: np.ndarray,
+    proba: np.ndarray | None,
+    source: str,
+) -> None:
+    """Logowanie predykcji i weryfikacja co 10. predykcję"""
+    classes = getattr(model, "classes_", [0, 1, 2])
+    last_record = None
+
+    for row_idx in range(len(features_df)):
+        probabilities = None
+        if proba is not None:
+            probabilities = {
+                TARGET_LABELS.get(int(c), str(c)): float(proba[row_idx][idx])
+                for idx, c in enumerate(classes)
+            }
+        last_record = prediction_logger.log_prediction(
+            features=features_df.iloc[row_idx].to_dict(),
+            predicted_class=int(preds[row_idx]),
+            probabilities=probabilities,
+            source=source,
+            request_id=str(uuid.uuid4()),
+        )
+
+    if last_record and "verification" in last_record:
+        verification = last_record["verification"]
+        avg_conf = verification["avg_confidence"]
+        summary = (
+            f"Zweryfikowano ostatnie {verification['n_checked']} predykcji "
+            f"(do #{verification['batch_end_index']}) — status: **{verification['status']}**"
+            + (f", śr. ufność modelu: {avg_conf:.2f}." if avg_conf is not None else ".")
+        )
+        if verification["status"] == "OK":
+            st.success(f"🔍 {summary}")
+        else:
+            st.warning(f"🔍 {summary} Uwagi: " + "; ".join(verification["issues"]))
 
 
 # UI
@@ -461,6 +401,7 @@ with tab_single:
         }
         features = build_feature_row(inputs)
         preds, proba = predict(model, features)
+        log_predictions_and_show_verification(model, features, preds, proba, source="streamlit_single")
         st.divider()
         render_result(int(preds[0]), proba)
 
@@ -529,6 +470,7 @@ with tab_batch:
 
         if st.button("Przewiduj dla całego pliku", type="primary"):
             preds, proba = predict(model, model_input)
+            log_predictions_and_show_verification(model, model_input, preds, proba, source="streamlit_batch")
             result = raw_df.copy()
             result["Predykcja"] = [TARGET_LABELS.get(int(p), str(p)) for p in preds]
             if proba is not None:
