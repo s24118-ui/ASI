@@ -274,12 +274,4 @@ liczby linii już zapisanych w pliku logu, dzięki czemu przetrwa restart
 aplikacji. Pliki `*.jsonl` w `data/09_predictions/` nie są commitowane do
 repozytorium.
 
-## Do zrobienia
-
-Kolejne etapy projektu:
-
-- dodać MLflow do śledzenia eksperymentów,
-- przygotować aplikację Streamlit do predykcji,
-- dodać logowanie predykcji jako prosty monitoring,
-- uzupełnić dokumentację architektury,
 
