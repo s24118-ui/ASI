@@ -37,6 +37,9 @@ data/08_reporting/                     Metryki i raporty
 src/credit_scoring/pipelines/          Kod pipeline'ów Kedro
 ```
 
+## Architektura
+![](./images/diagram.png)
+
 ## Pipeline'y Kedro
 
 Projekt ma trzy główne pipeline'y.
