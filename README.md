@@ -201,6 +201,79 @@ Ciężki trening jest odseparowany od CI, ponieważ wymaga danych z Git LFS,
 więcej czasu i pamięci oraz tworzy duże modele. Z tego samego powodu AutoML nie
 jest uruchamiany przy każdym Pull Requeście i pozostaje ręczną opcją treningu.
 
+## Serwowanie modelu
+
+Kod współdzielony między interfejsami serwującymi (Streamlit i FastAPI) znajduje
+się w `src/credit_scoring/serving/`:
+
+```text
+src/credit_scoring/serving/schema.py             Definicje cech i słowniki kodowania
+src/credit_scoring/serving/inference.py          Wczytywanie modelu, budowa wektora cech, predykcja
+src/credit_scoring/serving/prediction_logger.py  Logowanie predykcji + weryfikacja co 10. predykcję
+src/credit_scoring/serving/api.py                Aplikacja FastAPI
+```
+
+### Aplikacja Streamlit
+
+```powershell
+streamlit run app.py
+```
+
+### API FastAPI
+
+```powershell
+uvicorn credit_scoring.serving.api:app --reload --app-dir src
+```
+
+Dokumentacja interaktywna (Swagger UI): http://127.0.0.1:8000/docs
+
+Najważniejsze endpointy:
+
+| Metoda | Endpoint               | Opis                                              |
+|--------|------------------------|---------------------------------------------------|
+| GET    | `/health`              | Status API i informacja, czy model jest wczytany  |
+| GET    | `/model/metrics`       | Zawartość `data/08_reporting/metrics.json`        |
+| POST   | `/predict`             | Predykcja dla jednego klienta                     |
+| POST   | `/predict/batch`       | Predykcja dla listy klientów                      |
+| GET    | `/predictions/stats`   | Licznik predykcji i wynik ostatniej weryfikacji   |
+
+Przykład żądania `curl`:
+
+```bash
+curl -X POST http://127.0.0.1:8000/predict \
+  -H "Content-Type: application/json" \
+  -d '{
+        "age": 35, "occupation": "Engineer", "annual_income": 50000,
+        "monthly_salary": 4000, "monthly_balance": 300, "amount_invested": 100,
+        "num_bank_accounts": 4, "num_credit_card": 4, "num_of_loan": 2,
+        "interest_rate": 12, "outstanding_debt": 1200, "credit_utilization": 32,
+        "total_emi": 100, "credit_mix": "Standard", "credit_history_age_months": 120,
+        "delay_from_due_date": 10, "num_delayed_payment": 5, "changed_credit_limit": 8,
+        "num_credit_inquiries": 4, "payment_min": "No", "loan_types": ["Personal Loan"],
+        "payment_behaviour": "Low_spent_Small_value_payments"
+      }'
+```
+
+### Logowanie predykcji i weryfikacja co 10. predykcję
+
+Każda predykcja — niezależnie czy wykonana ze Streamlit, czy z FastAPI —
+jest logowana przez `PredictionLogger` do:
+
+```text
+data/09_predictions/predictions_log.jsonl     jedna linia JSON na predykcję
+data/09_predictions/verification_log.jsonl    jedna linia JSON co 10. predykcję
+```
+
+Co 10. predykcję (`verify_every=10`) automatycznie wykonywana jest weryfikacja
+ostatniej partii: sprawdzenie zgodności wektora cech ze schematem modelu, brak
+wartości NaN/Inf, sumowanie się prawdopodobieństw do 1.0, średnia ufność modelu
+oraz rozkład przewidzianych klas. Wynik (`OK`/`WARNING`) jest zapisywany do
+`verification_log.jsonl` oraz logowany przez standardowy moduł `logging`
+(logger `credit_scoring.predictions`). Licznik predykcji jest odtwarzany z
+liczby linii już zapisanych w pliku logu, dzięki czemu przetrwa restart
+aplikacji. Pliki `*.jsonl` w `data/09_predictions/` nie są commitowane do
+repozytorium.
+
 ## Do zrobienia
 
 Kolejne etapy projektu:
